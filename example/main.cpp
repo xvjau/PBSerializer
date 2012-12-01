@@ -74,7 +74,8 @@ int main()
 
     INIT_TIMER;
 
-    pb = msg.DebugString();                         SET_TIMER(pb);
+    msg.SerializeToString(&pb);                     SET_TIMER(pb);
+    pb = msg.DebugString();                         SET_TIMER(pb_debug);
     msg.SerializeJsonToString(&json);               SET_TIMER(json);
     msg.SerializeXmlToString(&xml);                 SET_TIMER(xml);
     //msg.SerializeIniToString(&ini);               SET_TIMER(ini);
@@ -87,6 +88,7 @@ int main()
     std::cout << "info=\"" << info << "\"\n" << std::endl;
 
     GET_TIME("PB = ", pb);
+    GET_TIME("PB-Debug = ", pb_debug);
     GET_TIME("JSON = ", json);
     GET_TIME("XML = ", xml);
     //GET_TIME("INI = ", ini);
