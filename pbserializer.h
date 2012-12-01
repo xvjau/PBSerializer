@@ -127,7 +127,9 @@ protected:
                         {
                             ptree item;
                             item.put("", refl->GetRepeatedInt32(message, desc, i));
-                            array.push_back(std::make_pair("item", item));
+
+                            #warning FIXME This only works for JSON - the first param to make_pair is the problem
+                            array.push_back(std::make_pair("", item));
                         }
 
                         result->add_child(p, array);
