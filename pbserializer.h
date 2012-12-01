@@ -26,6 +26,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
+#include <boost/property_tree/ini_parser.hpp>
+#include <boost/property_tree/info_parser.hpp>
 
 namespace google {
 namespace protobuf {
@@ -47,6 +49,8 @@ protected:
 
     static void SerializePtree(const Message& message, boost::property_tree::ptree* result, std::string path)
     {
+        using boost::property_tree::ptree;
+
         const Reflection* refl = message.GetReflection();
 
         FieldVector fields;
@@ -114,9 +118,19 @@ protected:
                 switch(desc->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        ptree array;
+
                         for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedInt32(message, desc, i));
+                        {
+                            ptree item;
+                            item.put("", refl->GetRepeatedInt32(message, desc, i));
+                            array.push_back(std::make_pair("item", item));
+                        }
+
+                        result->add_child(p, array);
                         break;
+                    }
 
                     case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
                         for(int i = 0; i != count; i++)
@@ -198,6 +212,34 @@ public:
     {
         std::stringstream str;
         SerializeXmlToOStream(&str);
+        output->assign(str.str());
+        return true;
+    }
+
+    bool SerializeIniToOStream(std::ostream* output) const
+    {
+        boost::property_tree::write_ini(*output, SerializePtree());
+        return true;
+    }
+
+    bool SerializeIniToString(std::string* output) const
+    {
+        std::stringstream str;
+        SerializeIniToOStream(&str);
+        output->assign(str.str());
+        return true;
+    }
+
+    bool SerializeInfoToOStream(std::ostream* output) const
+    {
+        boost::property_tree::write_info(*output, SerializePtree());
+        return true;
+    }
+
+    bool SerializeInfoToString(std::string* output) const
+    {
+        std::stringstream str;
+        SerializeInfoToOStream(&str);
         output->assign(str.str());
         return true;
     }
