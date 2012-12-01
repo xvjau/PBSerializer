@@ -42,7 +42,7 @@ protected:
     {
         boost::property_tree::ptree result;
 
-        SerializePtree(*this, &result, std::string());
+        SerializePtree(*this, &result, this->GetTypeName() + '.');
 
         return result;
     }
