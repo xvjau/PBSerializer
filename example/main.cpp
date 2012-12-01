@@ -42,16 +42,16 @@ int main()
     dt->set_month(02);
     dt->set_year(1972);
 
-    RepeatedField<int32>* arr = msg.mutable_int_array();
+    RepeatedField<int32>* int_arr = msg.mutable_int_array();
 
-    arr->Add(1);
-    arr->Add(1);
-    arr->Add(2);
-    arr->Add(3);
-    arr->Add(5);
-    arr->Add(8);
-    arr->Add(13);
-    arr->Add(21);
+    int_arr->Add(1);
+    int_arr->Add(1);
+    int_arr->Add(2);
+    int_arr->Add(3);
+    int_arr->Add(5);
+    int_arr->Add(8);
+    int_arr->Add(13);
+    int_arr->Add(21);
 
     RepeatedPtrField<sub_array>* obj_arry = msg.mutable_obj_array();
 
