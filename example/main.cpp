@@ -34,6 +34,23 @@ int main()
     arr->Add(13);
     arr->Add(21);
 
+    RepeatedPtrField<sub_array>* obj_arry = msg.mutable_obj_array();
+
+    sub_array* i = obj_arry->Add();
+    i->set_text("One");
+    i->set_number(1);
+    i->set_float_number(0.1);
+
+    i = obj_arry->Add();
+    i->set_text("two");
+    i->set_number(2);
+    i->set_float_number(0.2);
+
+    i = obj_arry->Add();
+    i->set_text("Three");
+    i->set_number(3);
+    i->set_float_number(0.3);
+
     string json, xml, ini, info;
 
     msg.SerializeJsonToString(&json);
