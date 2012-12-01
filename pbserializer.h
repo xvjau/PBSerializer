@@ -176,6 +176,7 @@ public:
     bool SerializeJsonToOStream(std::ostream* output) const
     {
         boost::property_tree::write_json(*output, SerializePtree());
+        return true;
     }
 
     bool SerializeJsonToString(std::string* output) const
@@ -183,11 +184,13 @@ public:
         std::stringstream str;
         SerializeJsonToOStream(&str);
         output->assign(str.str());
+        return true;
     }
 
     bool SerializeXmlToOStream(std::ostream* output) const
     {
         boost::property_tree::write_xml(*output, SerializePtree());
+        return true;
     }
 
     bool SerializeXmlToString(std::string* output) const
@@ -195,6 +198,7 @@ public:
         std::stringstream str;
         SerializeXmlToOStream(&str);
         output->assign(str.str());
+        return true;
     }
 };
 
