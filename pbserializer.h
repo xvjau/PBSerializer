@@ -171,7 +171,7 @@ protected:
                         case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
                         {
                             #warning Check this!
-                            SerializePtree(refl->GetMessage(message, desc), &item, "", useArrayItemNames);
+                            SerializePtree(refl->GetRepeatedMessage(message, desc, i), &item, "", useArrayItemNames);
                             break;
                         }
                     }
