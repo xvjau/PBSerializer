@@ -27,11 +27,14 @@
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 
+namespace google {
+namespace protobuf {
+
 template<class T>
 class PBSerializer : public T
 {
 protected:
-    typedef std::vector<const google::protobuf::FieldDescriptor*> FieldVector;
+    typedef std::vector<const FieldDescriptor*> FieldVector;
 
     boost::property_tree::ptree SerializePtree() const
     {
@@ -42,10 +45,8 @@ protected:
         return result;
     }
 
-    static void SerializePtree(const google::protobuf::Message& message, boost::property_tree::ptree* result, std::string path)
+    static void SerializePtree(const Message& message, boost::property_tree::ptree* result, std::string path)
     {
-        using namespace google::protobuf;
-
         const Reflection* refl = message.GetReflection();
 
         FieldVector fields;
@@ -201,5 +202,8 @@ public:
         return true;
     }
 };
+
+} // namespace protobuf
+} // namespace google
 
 #endif // PBSERIALIZER_H
