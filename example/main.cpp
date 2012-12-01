@@ -3,7 +3,8 @@
 #include "message.pb.h"
 #include <pbserializer.h>
 
-using std::string;
+using ::std::string;
+using namespace ::google::protobuf;
 
 typedef PBSerializer<test_message> test_message_json;
 
@@ -16,13 +17,13 @@ int main()
     msg.set_id(42);
     msg.set_message("Hello World!");
 
-    auto dt = msg.mutable_sub_message();
+    date_time* dt = msg.mutable_sub_message();
 
     dt->set_day(31);
     dt->set_month(02);
     dt->set_year(1972);
 
-    auto arr = msg.mutable_int_array();
+    RepeatedField<int32>* arr = msg.mutable_int_array();
 
     arr->Add(1);
     arr->Add(1);
@@ -33,14 +34,18 @@ int main()
     arr->Add(13);
     arr->Add(21);
 
-    string json, xml;
+    string json, xml, ini, info;
 
     msg.SerializeJsonToString(&json);
     msg.SerializeXmlToString(&xml);
+    //msg.SerializeIniToString(&ini);
+    msg.SerializeInfoToString(&info);
 
-    std::cout << "pb=\"" << msg.DebugString() << '"' << std::endl;
-    std::cout << "json=\"" << json << '"' << std::endl;
-    std::cout << "xml=\"" << xml << '"' << std::endl;
+    std::cout << "pb=\"" << msg.DebugString() << "\"\n\n";
+    std::cout << "json=\"" << json << "\"\n\n";
+    std::cout << "xml=\"" << xml << "\"\n\n";
+    std::cout << "ini=\"" << ini << "\"\n\n";
+    std::cout << "info=\"" << info << "\"\n" << std::endl;
 
     return 0;
 }
