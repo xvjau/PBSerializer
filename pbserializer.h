@@ -38,16 +38,22 @@ class PBSerializer : public T
 protected:
     typedef std::vector<const FieldDescriptor*> FieldVector;
 
-    boost::property_tree::ptree SerializePtree() const
+    boost::property_tree::ptree SerializePtree(bool useArrayItemNames) const
     {
         boost::property_tree::ptree result;
 
-        SerializePtree(*this, &result, this->GetTypeName() + '.');
+        SerializePtree(*this, &result, this->GetTypeName() + '.', useArrayItemNames);
 
+        // This is a bit reduntant, since most compilers will do the RVO as below:
+        // http://en.wikipedia.org/wiki/Return_value_optimization
+#if (__cplusplus >= 201103L)
+        return std::move(result);
+#else
         return result;
+#endif
     }
 
-    static void SerializePtree(const Message& message, boost::property_tree::ptree* result, std::string path)
+    static void SerializePtree(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)
     {
         using boost::property_tree::ptree;
 
@@ -106,87 +112,81 @@ protected:
 
                     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
                     {
-                        SerializePtree(refl->GetMessage(message, desc), result, p + '.');
+                        SerializePtree(refl->GetMessage(message, desc), result, p + '.', useArrayItemNames);
                         break;
                     }
                 }
             }
             else // is_repeated
             {
-                #warning FIXME This does not work yet!
                 const int count = refl->FieldSize(message, desc);
 
-                switch(desc->cpp_type())
+                #warning FIXME This does not work yet for all cases (only XML and JSON)
+                const std::string itemName = useArrayItemNames ? desc->name() : std::string();
+
+                ptree array;
+
+                for(int i = 0; i != count; i++)
                 {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    {
-                        #warning FIXME This does not work yet!
-                        ptree array;
+                    ptree item;
 
-                        for(int i = 0; i != count; i++)
-                        {
-                            ptree item;
+                    switch(desc->cpp_type())
+                    {
+                        case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                             item.put("", refl->GetRepeatedInt32(message, desc, i));
+                            break;
 
-                            #warning FIXME This only works for JSON - the first param to make_pair is the problem
-                            array.push_back(std::make_pair("", item));
+                        case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                            item.put("", refl->GetRepeatedInt64(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                            item.put("", refl->GetRepeatedUInt32(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                            item.put("", refl->GetRepeatedUInt64(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                            item.put("", refl->GetRepeatedDouble(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                            item.put("", refl->GetRepeatedFloat(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                            item.put("", refl->GetRepeatedBool(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                            item.put("", refl->GetRepeatedEnum(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                            item.put("", refl->GetRepeatedString(message, desc, i));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                        {
+                            #warning Check this!
+                            SerializePtree(refl->GetMessage(message, desc), &item, "", useArrayItemNames);
+                            break;
                         }
-
-                        result->add_child(p, array);
-                        break;
                     }
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedInt64(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedUInt32(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedUInt64(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedDouble(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedFloat(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedBool(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedEnum(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedString(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        // TODO How to do this?
-                        assert(false);
-
-                        SerializePtree(refl->GetMessage(message, desc), result, p + '.');
-                        for(int i = 0; i != count; i++)
-                            result->add(p, refl->GetRepeatedInt32(message, desc, i));
-                        break;
-                    }
+#if (__cplusplus >= 201103L)
+                    array.push_back(std::make_pair(itemName, std::move(item)));
+#else
+                    array.push_back(std::make_pair(itemName, item));
+#endif
                 }
+
+#if (__cplusplus >= 201103L)
+                result->add_child(p, std::move(array));
+#else
+                result->add_child(p, array);
+#endif
             }
         }
     }
@@ -194,7 +194,7 @@ protected:
 public:
     bool SerializeJsonToOStream(std::ostream* output) const
     {
-        boost::property_tree::write_json(*output, SerializePtree());
+        boost::property_tree::write_json(*output, SerializePtree(false));
         return true;
     }
 
@@ -208,7 +208,7 @@ public:
 
     bool SerializeXmlToOStream(std::ostream* output) const
     {
-        boost::property_tree::write_xml(*output, SerializePtree());
+        boost::property_tree::write_xml(*output, SerializePtree(true));
         return true;
     }
 
@@ -222,7 +222,7 @@ public:
 
     bool SerializeIniToOStream(std::ostream* output) const
     {
-        boost::property_tree::write_ini(*output, SerializePtree());
+        boost::property_tree::write_ini(*output, SerializePtree(true));
         return true;
     }
 
@@ -236,7 +236,7 @@ public:
 
     bool SerializeInfoToOStream(std::ostream* output) const
     {
-        boost::property_tree::write_info(*output, SerializePtree());
+        boost::property_tree::write_info(*output, SerializePtree(false));
         return true;
     }
 

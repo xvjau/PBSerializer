@@ -44,7 +44,7 @@ int main()
     std::cout << "pb=\"" << msg.DebugString() << "\"\n\n";
     std::cout << "json=\"" << json << "\"\n\n";
     std::cout << "xml=\"" << xml << "\"\n\n";
-    std::cout << "ini=\"" << ini << "\"\n\n";
+    //std::cout << "ini=\"" << ini << "\"\n\n";
     std::cout << "info=\"" << info << "\"\n" << std::endl;
 
     return 0;
