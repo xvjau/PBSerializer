@@ -3,6 +3,25 @@
 #include "message.pb.h"
 #include <pbserializer.h>
 
+// Use C++11 to get performance mesures
+#if (__cplusplus >= 201103L)
+#include <chrono>
+using namespace std::chrono;
+
+#define INIT_TIMER typedef high_resolution_clock __hrc; auto __hrc_start = __hrc::now()
+#define SET_TIMER(NAME) auto __hrc_timer_ ## NAME ## _ = duration_cast<duration<double>>(__hrc::now() - __hrc_start); __hrc_start = __hrc::now()
+
+#define GET_TIME(STR, NAME)                                                             \
+do {                                                                                    \
+    std::cout << STR << __hrc_timer_ ## NAME ## _.count() << "\n";                                   \
+} while (false)
+#else
+#define INIT_TIMER          do { } while (false)
+#define SET_TIMER(NAME)     do { } while (false)
+#define GET_TIME(STR, NAME) do { } while (false)
+#endif
+
+
 using ::std::string;
 using namespace ::google::protobuf;
 
@@ -51,18 +70,27 @@ int main()
     i->set_number(3);
     i->set_float_number(0.3);
 
-    string json, xml, ini, info;
+    string pb, json, xml, ini, info;
 
-    msg.SerializeJsonToString(&json);
-    msg.SerializeXmlToString(&xml);
-    //msg.SerializeIniToString(&ini);
-    msg.SerializeInfoToString(&info);
+    INIT_TIMER;
 
-    std::cout << "pb=\"" << msg.DebugString() << "\"\n\n";
+    pb = msg.DebugString();                         SET_TIMER(pb);
+    msg.SerializeJsonToString(&json);               SET_TIMER(json);
+    msg.SerializeXmlToString(&xml);                 SET_TIMER(xml);
+    //msg.SerializeIniToString(&ini);               SET_TIMER(ini);
+    msg.SerializeInfoToString(&info);               SET_TIMER(info);
+
+    std::cout << "pb=\"" << pb << "\"\n\n";
     std::cout << "json=\"" << json << "\"\n\n";
     std::cout << "xml=\"" << xml << "\"\n\n";
     //std::cout << "ini=\"" << ini << "\"\n\n";
     std::cout << "info=\"" << info << "\"\n" << std::endl;
+
+    GET_TIME("PB = ", pb);
+    GET_TIME("JSON = ", json);
+    GET_TIME("XML = ", xml);
+    //GET_TIME("INI = ", ini);
+    GET_TIME("INFO = ", info);
 
     return 0;
 }
