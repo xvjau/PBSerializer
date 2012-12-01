@@ -1,7 +1,7 @@
 #include <iostream>
 
 #include "message.pb.h"
-#include "pbserializer.h"
+#include <pbserializer.h>
 
 using std::string;
 

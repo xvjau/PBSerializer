@@ -17,7 +17,7 @@ PROTOBUF_GENERATE_CPP(PROTOBUF_SRCS PROTOBUF_HDRS
     message.proto
 )
 
-include_directories(${CMAKE_CURRENT_BINARY_DIR} ${Boost_INCLUDE_DIRS} ${PROTOBUF_INCLUDE_DIR})
+include_directories(.. ${CMAKE_CURRENT_BINARY_DIR} ${Boost_INCLUDE_DIRS} ${PROTOBUF_INCLUDE_DIR})
 
 add_executable(pbserializer main.cpp ${PROTOBUF_SRCS})
 
