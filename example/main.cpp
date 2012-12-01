@@ -7,7 +7,7 @@ using std::string;
 
 typedef PBSerializer<test_message> test_message_json;
 
-int main(int argc, char **argv)
+int main()
 {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
 
