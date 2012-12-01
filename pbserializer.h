@@ -113,12 +113,14 @@ protected:
             }
             else // is_repeated
             {
+                #warning FIXME This does not work yet!
                 const int count = refl->FieldSize(message, desc);
 
                 switch(desc->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
+                        #warning FIXME This does not work yet!
                         ptree array;
 
                         for(int i = 0; i != count; i++)
