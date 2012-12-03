@@ -13,5 +13,5 @@ include_directories(.. ${CMAKE_CURRENT_BINARY_DIR} ${Boost_INCLUDE_DIRS} ${PROTO
 
 add_executable(pbserializer main.cpp ${PROTOBUF_SRCS})
 
-target_link_libraries(pbserializer ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY})
+target_link_libraries(pbserializer pthread ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY})
 
