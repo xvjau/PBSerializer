@@ -11,7 +11,13 @@ add_definitions(-Wall -Wextra)
 
 include_directories(.. ${CMAKE_CURRENT_BINARY_DIR} ${Boost_INCLUDE_DIRS} ${PROTOBUF_INCLUDE_DIR})
 
-add_executable(pbserializer ../pbserializer.cpp main.cpp ${PROTOBUF_SRCS})
+enable_testing()
 
-target_link_libraries(pbserializer pthread ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY})
+add_executable(tests ../pbserializer.cpp tests.cpp ${PROTOBUF_SRCS})
 
+target_link_libraries(tests pthread ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY} gtest gtest_main)
+
+add_test(
+    NAME tests
+    COMMAND tests
+)

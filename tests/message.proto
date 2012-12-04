@@ -1,0 +1,26 @@
+
+
+message date_time
+{
+    optional int32 year = 1;
+    optional int32 month = 2;
+    optional int32 day = 3;
+}
+
+message sub_array
+{
+    optional string text = 1;
+    optional int64 number = 2;
+    optional float float_number = 3;
+}
+
+message test_message
+{
+    optional int32 id = 1;
+    optional string message = 2;
+
+    optional date_time sub_message = 3;
+
+    repeated int32 int_array = 4;
+    repeated sub_array obj_array = 5;
+}
