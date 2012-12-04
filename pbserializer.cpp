@@ -8,20 +8,22 @@
 namespace google {
 namespace protobuf {
 
+typedef std::vector<const FieldDescriptor*> FieldVector;
+
 void ParsePtree(Message* message, boost::property_tree::ptree* p)
 {
     using namespace boost::property_tree;
-    
+
     const Reflection* refl = message->GetReflection();
     const Descriptor* mDesc = message->GetDescriptor();
-    
+
     ptree::iterator it = p->begin(), end = p->end();
 
     for(; it != end; it++)
     {
         const FieldDescriptor* desc = mDesc->FindFieldByName(it->first);
         std::cout << it->first << "," << it->second.get<std::string>("") << std::endl;
-        
+
         if (!desc->is_repeated())
         {
             switch(desc->cpp_type())
@@ -29,7 +31,7 @@ void ParsePtree(Message* message, boost::property_tree::ptree* p)
                 case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     refl->SetInt32(message, desc, it->second.get<int>(""));
                     break;
-                
+
                 case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
                     refl->SetInt64(message, desc, it->second.get<int>(""));
                     break;
@@ -123,9 +125,9 @@ void ParsePtree(Message* message, boost::property_tree::ptree* p)
                 }
             }
         }
-        
+
     }
-    
+
 }
 
 void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)

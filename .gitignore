@@ -11,3 +11,8 @@
 *.lai
 *.la
 *.a
+
+# KDevelop files
+build
+*.kdev4
+*.kate-swp

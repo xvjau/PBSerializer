@@ -1,6 +1,6 @@
 /*
     Protobuf Serializer using boost's property tree
-    Copyright (C) 2012  
+    Copyright (C) 2012
     Gianni Rossi <gianni.rossi@gmail.com>, Caio Casimiro <caiorcasimiro@gmail.com>
 
     This library is free software; you can redistribute it and/or
@@ -35,7 +35,6 @@
 namespace google {
 namespace protobuf {
 
-typedef std::vector<const FieldDescriptor*> FieldVector;
 void ParsePtree(Message* message, boost::property_tree::ptree* p);
 void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames);
 
@@ -58,12 +57,8 @@ protected:
 #endif
     }
 
-    
-
-    
-
 public:
-    
+
     bool ParseJsonFromString(std::string input)
     {
         std::stringstream str;
@@ -73,7 +68,7 @@ public:
         ParsePtree(this,&p);
         return true;
     }
-    
+
     bool SerializeJsonToOStream(std::ostream* output) const
     {
         boost::property_tree::write_json(*output, SerializePtree(false));
