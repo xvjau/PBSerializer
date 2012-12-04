@@ -22,8 +22,7 @@ void ParsePtree(Message* message, boost::property_tree::ptree* p)
     for(; it != end; it++)
     {
         const FieldDescriptor* desc = mDesc->FindFieldByName(it->first);
-        std::cout << it->first << "," << it->second.get<std::string>("") << std::endl;
-
+        
         if (!desc->is_repeated())
         {
             switch(desc->cpp_type())

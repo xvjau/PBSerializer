@@ -58,7 +58,7 @@ TEST(PBSerializerTests, TestJsonSerialization)
     
     string line;
     stringstream r;
-    ifstream file ("../example.json");
+    ifstream file ("example.json");
     if (file.is_open())
     {
         while ( file.good() )
@@ -81,7 +81,7 @@ TEST(PBSerializerTests, TestJsonParsing)
 
     string line;
     stringstream r;
-    ifstream file ("../example.json");
+    ifstream file ("example.json");
     if (file.is_open())
     {
         while ( file.good() )
