@@ -19,6 +19,8 @@
 
 #ifndef PBSERIALIZER_H
 #define PBSERIALIZER_H
+#include <map>
+#include <string>
 
 #include <google/protobuf/message.h>
 #include <google/protobuf/descriptor.h>
@@ -42,7 +44,7 @@ protected:
     {
         boost::property_tree::ptree result;
 
-        SerializePtree(*this, &result, this->GetTypeName() + '.', useArrayItemNames);
+        SerializePtree(*this, &result, std::string(""), useArrayItemNames);
 
         // This is a bit reduntant, since most compilers will do the RVO as below:
         // http://en.wikipedia.org/wiki/Return_value_optimization
@@ -51,6 +53,126 @@ protected:
 #else
         return result;
 #endif
+    }
+
+    static void ParsePtree(Message* message, boost::property_tree::ptree* p)
+    {
+        using namespace boost::property_tree;
+        
+        const Reflection* refl = message->GetReflection();
+        const Descriptor* mDesc = message->GetDescriptor();
+        
+        ptree::iterator it = p->begin(), end = p->end();
+
+        for(; it != end; it++)
+        {
+            const FieldDescriptor* desc = mDesc->FindFieldByName(it->first);
+            std::cout << it->first << "," << it->second.get<std::string>("") << std::endl;
+            
+            if (!desc->is_repeated())
+            {
+                switch(desc->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                        refl->SetInt32(message, desc, it->second.get<int>(""));
+                        break;
+                    
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                        refl->SetInt64(message, desc, it->second.get<int>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                        refl->SetUInt32(message, desc, it->second.get<int>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                        refl->SetUInt64(message, desc, it->second.get<int>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                        refl->SetDouble(message, desc, it->second.get<double>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                        refl->SetFloat(message, desc, it->second.get<float>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                        refl->SetBool(message, desc, it->second.get<bool>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                        refl->SetEnum(message, desc, desc->enum_type()->FindValueByNumber(it->second.get<int>("")));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                        refl->SetString(message, desc, it->second.get<std::string>(""));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        ParsePtree(refl->MutableMessage(message, desc), &(it->second));
+                        break;
+                    }
+
+                }
+            }
+            else // is_repeated
+            {
+                ptree::iterator i3 = it->second.begin(), e3 = it->second.end();
+                for(; i3 != e3; i3++)
+                {
+                    switch(desc->cpp_type())
+                    {
+                        case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                            refl->AddInt32(message, desc, i3->second.get<int>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                            refl->AddInt64(message, desc, i3->second.get<int>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                            refl->AddUInt32(message, desc, i3->second.get<int>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                            refl->AddUInt64(message, desc, i3->second.get<int>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                            refl->AddDouble(message, desc, i3->second.get<double>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                            refl->AddFloat(message, desc, i3->second.get<float>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                            refl->AddBool(message, desc, i3->second.get<bool>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                            refl->AddEnum(message, desc, desc->enum_type()->FindValueByNumber(i3->second.get<int>("")));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                            refl->AddString(message, desc, i3->second.get<std::string>(""));
+                            break;
+
+                        case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                        {
+                            #warning Check this!
+                            Message* m = refl->AddMessage(message, desc);
+                            ParsePtree(m, &(i3->second));
+                            break;
+                        }
+                    }
+                }
+            }
+            
+        }
+        
     }
 
     static void SerializePtree(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)
@@ -192,6 +314,17 @@ protected:
     }
 
 public:
+    
+    bool ParseJsonFromString(std::string input)
+    {
+        std::stringstream str;
+        str << input;
+        boost::property_tree::ptree p;
+        boost::property_tree::read_json(str,p);
+        ParsePtree(this,&p);
+        return true;
+    }
+    
     bool SerializeJsonToOStream(std::ostream* output) const
     {
         boost::property_tree::write_json(*output, SerializePtree(false));

@@ -80,19 +80,25 @@ int main()
     msg.SerializeXmlToString(&xml);                 SET_TIMER(xml);
     //msg.SerializeIniToString(&ini);               SET_TIMER(ini);
     msg.SerializeInfoToString(&info);               SET_TIMER(info);
-
+    
     std::cout << "pb=\"" << pb << "\"\n\n";
     std::cout << "json=\"" << json << "\"\n\n";
     std::cout << "xml=\"" << xml << "\"\n\n";
     //std::cout << "ini=\"" << ini << "\"\n\n";
     std::cout << "info=\"" << info << "\"\n" << std::endl;
-
+    
     GET_TIME("PB = ", pb);
     GET_TIME("PB-Debug = ", pb_debug);
     GET_TIME("JSON = ", json);
     GET_TIME("XML = ", xml);
     //GET_TIME("INI = ", ini);
     GET_TIME("INFO = ", info);
-
+    
+    test_message_json msg2;
+    msg2.ParseJsonFromString(json);
+    
+    string json2;
+    msg2.SerializeJsonToString(&json2);
+    std::cout << "\n\nJson:\n" << json2 << std::endl;
     return 0;
 }
