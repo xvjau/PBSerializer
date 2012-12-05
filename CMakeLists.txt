@@ -10,7 +10,7 @@ add_definitions(-Wall -Wextra)
 include_directories(${Boost_INCLUDE_DIRS} ${PROTOBUF_INCLUDE_DIR})
 
 add_library(pbserializer pbserializer.cpp)
-
+add_definitions(-fPIC) 
 add_subdirectory(example)
 add_subdirectory(tests)
 
