@@ -179,7 +179,7 @@ void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptr
                     break;
 
                 case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    result->put(p, refl->GetEnum(message, desc));
+                    result->put(p, refl->GetEnum(message, desc)->number());
                     break;
 
                 case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
@@ -237,7 +237,7 @@ void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptr
                         break;
 
                     case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                        item.put("", refl->GetRepeatedEnum(message, desc, i));
+                        item.put("", refl->GetRepeatedEnum(message, desc, i)->number());
                         break;
 
                     case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
