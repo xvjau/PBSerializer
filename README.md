@@ -20,14 +20,14 @@ You can build PBSerializer using CMake following these steps:
     `cmake ..`
 3. Finally, run make:
     `make`
-    
+
 This process will build both library and test suite.
-It is always a good idea to the test suite before installing.
+It is always a good idea to run the test suite before installing.
 
 To run the test suie, inside the build dir, go to the test dir:
     `cd tests`
 And execute the *tests* program:
     `./tests`
-    
+
 You can finally install the library running `make install`
 inside the build dir, *not the tests dir*
