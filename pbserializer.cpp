@@ -2,133 +2,602 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/message.h>
 #include <google/protobuf/descriptor.h>
+#include <boost/concept_check.hpp>
 
-#include <boost/property_tree/ptree.hpp>
+#include <stack>
+#include <iostream>
+#include <cstdio>
+
+#include "JSON_parser/JSON_parser.h"
 
 namespace google {
 namespace protobuf {
 
 typedef std::vector<const FieldDescriptor*> FieldVector;
 
-void ParsePtree(Message* message, boost::property_tree::ptree* p)
+#if (__cplusplus >= 201103L)
+constexpr
+#endif
+    static short UTF8len(char b)
 {
-    using namespace boost::property_tree;
-
-    const Reflection* refl = message->GetReflection();
-    const Descriptor* mDesc = message->GetDescriptor();
-
-    ptree::iterator it = p->begin(), end = p->end();
-
-    for(; it != end; it++)
+    short bits = 1;
+    for (; (b & (1 << 8)) != 0; b <<= 1)
     {
-        const FieldDescriptor* desc = mDesc->FindFieldByName(it->first);
-        
-        if (!desc->is_repeated())
+        bits++;
+    }
+    return bits;
+}
+
+class JSONParserCtx
+{
+public:
+    JSON_parser         m_parser;
+
+    Message*            m_message;
+
+    const Reflection*   m_refl;
+    const Descriptor*   m_desc;
+    const FieldDescriptor*      m_currentField;
+
+    std::istream*       m_jsonData;
+
+    JSONParserCtx(Message* message, std::istream* jsonData):
+        m_message(message),
+        m_jsonData(jsonData)
+    {
+        m_refl = message->GetReflection();
+        m_desc = message->GetDescriptor();
+        m_currentField = NULL;
+
+        JSON_config config;
+        memset(&config, 0, sizeof(JSON_config));
+
+        config.callback = _parserCallback;
+        config.callback_ctx = this;
+
+        m_parser = new_JSON_parser(&config);
+    }
+
+    ~JSONParserCtx()
+    {
+        delete_JSON_parser(m_parser);
+    }
+
+    void parse()
+    {
+        char tailChar = 0;
+
+        while(!m_jsonData->eof())
         {
-            switch(desc->cpp_type())
+            const std::size_t bufferSize = 2048;
+            char buffer[bufferSize];
+
+            char *bufferStart = tailChar ? &buffer[1] : &buffer[0];
+
+            m_jsonData->read(bufferStart, tailChar ? bufferSize - 1 : bufferSize);
+            std::size_t read = m_jsonData->gcount();
+
+            for(uint i = 0; i < read; /* no inc */)
             {
-                case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    refl->SetInt32(message, desc, it->second.get<int>(""));
-                    break;
+                const char c = buffer[i];
 
-                case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    refl->SetInt64(message, desc, it->second.get<int>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    refl->SetUInt32(message, desc, it->second.get<int>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    refl->SetUInt64(message, desc, it->second.get<int>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    refl->SetDouble(message, desc, it->second.get<double>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    refl->SetFloat(message, desc, it->second.get<float>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    refl->SetBool(message, desc, it->second.get<bool>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    refl->SetEnum(message, desc, desc->enum_type()->FindValueByNumber(it->second.get<int>("")));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    refl->SetString(message, desc, it->second.get<std::string>(""));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                switch(UTF8len(c))
                 {
-                    ParsePtree(refl->MutableMessage(message, desc), &(it->second));
-                    break;
-                }
-
-            }
-        }
-        else // is_repeated
-        {
-            ptree::iterator i3 = it->second.begin(), e3 = it->second.end();
-            for(; i3 != e3; i3++)
-            {
-                switch(desc->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                        refl->AddInt32(message, desc, i3->second.get<int>(""));
+                    case 0: assert(UTF8len(c) != 0);  // Should NEVER happen
+                    case 1:
+                        i++;
+                        JSON_parser_char(m_parser, c);
                         break;
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                        refl->AddInt64(message, desc, i3->second.get<int>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                        refl->AddUInt32(message, desc, i3->second.get<int>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                        refl->AddUInt64(message, desc, i3->second.get<int>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                        refl->AddDouble(message, desc, i3->second.get<double>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                        refl->AddFloat(message, desc, i3->second.get<float>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                        refl->AddBool(message, desc, i3->second.get<bool>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                        refl->AddEnum(message, desc, desc->enum_type()->FindValueByNumber(i3->second.get<int>("")));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                        refl->AddString(message, desc, i3->second.get<std::string>(""));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    case 2:
                     {
-                        #warning Check this!
-                        Message* m = refl->AddMessage(message, desc);
-                        ParsePtree(m, &(i3->second));
+                        if (i < read - 1)
+                        {
+                            i += 2;
+                            short *str = reinterpret_cast<short*>(buffer[i]);
+                            JSON_parser_char(m_parser, *str);
+
+                        }
+                        else
+                        {
+                            tailChar = buffer[i];
+                            goto EXIT_FOR;
+                        }
+                        break;
+                    }
+                    case 3:
+                    case 4:
+                    {
+                        i += UTF8len(c);
+                        int *str = reinterpret_cast<int*>(buffer[i]);
+                        JSON_parser_char(m_parser, *str);
                         break;
                     }
                 }
             }
-        }
 
+            EXIT_FOR: {}
+        }
     }
 
-}
+    static int _parserCallback(void* ctx, int type, const struct JSON_value_struct* value)
+    {
+        return static_cast<JSONParserCtx*>(ctx)->parserCallback(type, value);
+    }
 
+    int parserCallback(int type, const struct JSON_value_struct* value)
+    {
+        switch( type )
+        {
+            case JSON_T_ARRAY_BEGIN:
+            case JSON_T_OBJECT_BEGIN:
+            {
+                //thiz->elementStart( nullptr );
+                break;
+            }
+
+            case JSON_T_ARRAY_END:
+            case JSON_T_OBJECT_END:
+            {
+                //thiz->elementEnd();
+                break;
+            }
+
+            case JSON_T_INTEGER:
+            {
+                switch(m_currentField->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        setInt32(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                    {
+                        setInt64(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                    {
+                        setUInt32(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                    {
+                        setInt64(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                    {
+                        setDouble(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                    {
+                        setFloat(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                    {
+                        setBool(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                    {
+                        setEnum(value->vu.integer_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                    {
+                        char buffer[64];
+                        snprintf(buffer, 64, "%ld", value->vu.integer_value);
+                        setString(buffer);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        // TODO wtf?
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case JSON_T_FLOAT:
+            {
+                switch(m_currentField->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        setInt32(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                    {
+                        setInt64(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                    {
+                        setUInt32(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                    {
+                        setInt64(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                    {
+                        setDouble(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                    {
+                        setFloat(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                    {
+                        setBool(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                    {
+                        setEnum(value->vu.float_value);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                    {
+                        char buffer[64];
+                        snprintf(buffer, 64, "%f", value->vu.float_value);
+                        setString(buffer);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        // TODO wtf?
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case JSON_T_NULL:
+                break;
+
+            case JSON_T_TRUE:
+            {
+                switch(m_currentField->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        setInt32(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                    {
+                        setInt64(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                    {
+                        setUInt32(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                    {
+                        setInt64(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                    {
+                        setDouble(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                    {
+                        setFloat(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                    {
+                        setBool(true);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                    {
+                        setEnum(1);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                    {
+                        setString("true");
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        // TODO wtf?
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case JSON_T_FALSE:
+            {
+                switch(m_currentField->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        setInt32(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                    {
+                        setInt64(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                    {
+                        setUInt32(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                    {
+                        setInt64(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                    {
+                        setDouble(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                    {
+                        setFloat(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                    {
+                        setBool(false);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                    {
+                        setEnum(0);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                    {
+                        setString("false");
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        // TODO wtf?
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case JSON_T_STRING:
+            {
+                std::string str = std::string( value->vu.str.value, value->vu.str.length );
+
+                switch(m_currentField->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    {
+                        int val = atoi(str.c_str());
+                        setInt32(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                    {
+                        long long val = atoll(str.c_str());
+                        setInt64(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                    {
+                        int val = atoi(str.c_str());
+                        setUInt32(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                    {
+                        long long val = atoll(str.c_str());
+                        setInt64(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                    {
+                        double val = strtod(str.c_str(), NULL);
+                        setDouble(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                    {
+                        float val = strtof(str.c_str(), NULL);
+                        setFloat(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                    {
+                        bool val = (strcasecmp(str.c_str(), "true") == 0) ||
+                                    (strcasecmp(str.c_str(), "t") == 0) ||
+                                    (strcasecmp(str.c_str(), "1") == 0);
+                        setBool(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                    {
+                        int val = atoll(str.c_str());
+                        setEnum(val);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                    {
+                        setString(str);
+                        break;
+                    }
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        // TODO wtf?
+                        break;
+                    }
+                }
+                break;
+            }
+
+            case JSON_T_KEY:
+            {
+                std::string fieldName = std::string(value->vu.str.value, value->vu.str.length);
+                m_currentField = m_desc->FindFieldByName(fieldName);
+                break;
+            }
+
+            default:
+            {
+                assert( false );
+            }
+        }
+
+        return 1; // continue parsing
+    }
+
+    void setInt32(int32_t val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetInt32(m_message, m_currentField, val);
+        else
+            m_refl->AddInt32(m_message, m_currentField, val);
+    }
+    void setInt64(int64_t val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetInt64(m_message, m_currentField, val);
+        else
+            m_refl->AddInt64(m_message, m_currentField, val);
+    }
+    void setUInt32(uint32_t val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetUInt32(m_message, m_currentField, val);
+        else
+            m_refl->AddUInt32(m_message, m_currentField, val);
+    }
+    void setUInt64(uint64_t val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetUInt64(m_message, m_currentField, val);
+        else
+            m_refl->AddUInt64(m_message, m_currentField, val);
+    }
+    void setDouble(double val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetDouble(m_message, m_currentField, val);
+        else
+            m_refl->AddDouble(m_message, m_currentField, val);
+    }
+    void setFloat(float val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetFloat(m_message, m_currentField, val);
+        else
+            m_refl->AddFloat(m_message, m_currentField, val);
+    }
+    void setBool(bool val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetBool(m_message, m_currentField, val);
+        else
+            m_refl->AddBool(m_message, m_currentField, val);
+    }
+    void setEnum(int val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetEnum(m_message, m_currentField, m_currentField->enum_type()->FindValueByNumber(val));
+        else
+            m_refl->AddEnum(m_message, m_currentField, m_currentField->enum_type()->FindValueByNumber(val));
+    }
+    void setString(std::string val)
+    {
+        if (!m_currentField->is_repeated())
+            m_refl->SetString(m_message, m_currentField, val);
+        else
+            m_refl->AddString(m_message, m_currentField, val);
+    }
+};
+
+void ParseJSON(Message* message, std::istream* jsonData)
+{
+    JSONParserCtx parser(message, jsonData);
+    parser.parse();
+
+//     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+//     {
+//         ParsePtree(refl->MutableMessage(m_message, m_desc), &(it->second));
+//         break;
+//     }
+//
+//     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+//     {
+//         #warning Check this!
+//         Message* m = refl->AddMessage(m_message, m_desc);
+//         ParsePtree(m, &(i3->second));
+//         break;
+//     }
+
+}
+/*
 void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)
 {
     using boost::property_tree::ptree;
@@ -265,7 +734,7 @@ void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptr
 #endif
         }
     }
-}
+}*/
 
 }
 }

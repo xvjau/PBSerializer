@@ -21,41 +21,38 @@
 #ifndef PBSERIALIZER_H
 #define PBSERIALIZER_H
 #include <map>
+
 #include <string>
+#include <sstream>
+
+#include <istream>
 
 #include <google/protobuf/message.h>
 #include <google/protobuf/descriptor.h>
 
-#include <boost/property_tree/ptree.hpp>
-#include <boost/property_tree/json_parser.hpp>
-#include <boost/property_tree/xml_parser.hpp>
-#include <boost/property_tree/ini_parser.hpp>
-#include <boost/property_tree/info_parser.hpp>
-
 namespace google {
 namespace protobuf {
 
-void ParsePtree(Message* message, boost::property_tree::ptree* p);
-void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames);
+void ParseJSON(Message* message, std::istream* jsonData);
 
 template<class T>
 class PBSerializer : public T
 {
 protected:
-    boost::property_tree::ptree SerializePtree(bool useArrayItemNames) const
-    {
-        boost::property_tree::ptree result;
-
-        SerializePtreeFromMessage(*this, &result, std::string(""), useArrayItemNames);
-
-        // This is a bit reduntant, since most compilers will do the RVO as below:
-        // http://en.wikipedia.org/wiki/Return_value_optimization
-#if (__cplusplus >= 201103L)
-        return std::move(result);
-#else
-        return result;
-#endif
-    }
+//     boost::property_tree::ptree SerializePtree(bool useArrayItemNames) const
+//     {
+//         boost::property_tree::ptree result;
+//
+//         SerializePtreeFromMessage(*this, &result, std::string(""), useArrayItemNames);
+//
+//         // This is a bit reduntant, since most compilers will do the RVO as below:
+//         // http://en.wikipedia.org/wiki/Return_value_optimization
+// #if (__cplusplus >= 201103L)
+//         return std::move(result);
+// #else
+//         return result;
+// #endif
+//     }
 
 public:
 
@@ -63,67 +60,37 @@ public:
     {
         std::stringstream str;
         str << input;
-        boost::property_tree::ptree p;
-        boost::property_tree::read_json(str,p);
-        ParsePtree(this,&p);
+        ParseJSON(this, &str);
         return true;
     }
 
-    bool SerializeJsonToOStream(std::ostream* output) const
-    {
-        boost::property_tree::write_json(*output, SerializePtree(false));
-        return true;
-    }
-
-    bool SerializeJsonToString(std::string* output) const
-    {
-        std::stringstream str;
-        SerializeJsonToOStream(&str);
-        output->assign(str.str());
-        return true;
-    }
-
-    bool SerializeXmlToOStream(std::ostream* output) const
-    {
-        boost::property_tree::write_xml(*output, SerializePtree(true));
-        return true;
-    }
-
-    bool SerializeXmlToString(std::string* output) const
-    {
-        std::stringstream str;
-        SerializeXmlToOStream(&str);
-        output->assign(str.str());
-        return true;
-    }
-
-    bool SerializeIniToOStream(std::ostream* output) const
-    {
-        boost::property_tree::write_ini(*output, SerializePtree(true));
-        return true;
-    }
-
-    bool SerializeIniToString(std::string* output) const
-    {
-        std::stringstream str;
-        SerializeIniToOStream(&str);
-        output->assign(str.str());
-        return true;
-    }
-
-    bool SerializeInfoToOStream(std::ostream* output) const
-    {
-        boost::property_tree::write_info(*output, SerializePtree(false));
-        return true;
-    }
-
-    bool SerializeInfoToString(std::string* output) const
-    {
-        std::stringstream str;
-        SerializeInfoToOStream(&str);
-        output->assign(str.str());
-        return true;
-    }
+//     bool SerializeJsonToOStream(std::ostream* output) const
+//     {
+//         boost::property_tree::write_json(*output, SerializePtree(false));
+//         return true;
+//     }
+//
+//     bool SerializeJsonToString(std::string* output) const
+//     {
+//         std::stringstream str;
+//         SerializeJsonToOStream(&str);
+//         output->assign(str.str());
+//         return true;
+//     }
+//
+//     bool SerializeXmlToOStream(std::ostream* output) const
+//     {
+//         boost::property_tree::write_xml(*output, SerializePtree(true));
+//         return true;
+//     }
+//
+//     bool SerializeXmlToString(std::string* output) const
+//     {
+//         std::stringstream str;
+//         SerializeXmlToOStream(&str);
+//         output->assign(str.str());
+//         return true;
+//     }
 };
 
 } // namespace protobuf
