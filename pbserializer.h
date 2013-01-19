@@ -39,22 +39,6 @@ void SerializeJSON(const google::protobuf::Message& message, std::ostream& jsonD
 template<class T>
 class PBSerializer : public T
 {
-protected:
-//     boost::property_tree::ptree SerializePtree(bool useArrayItemNames) const
-//     {
-//         boost::property_tree::ptree result;
-//
-//         SerializePtreeFromMessage(*this, &result, std::string(""), useArrayItemNames);
-//
-//         // This is a bit reduntant, since most compilers will do the RVO as below:
-//         // http://en.wikipedia.org/wiki/Return_value_optimization
-// #if (__cplusplus >= 201103L)
-//         return std::move(result);
-// #else
-//         return result;
-// #endif
-//     }
-
 public:
 
     bool ParseJSONFromIStream(std::istream &input)
@@ -84,20 +68,6 @@ public:
         output.assign(str.str());
         return true;
     }
-//
-//     bool SerializeXmlToOStream(std::ostream* output) const
-//     {
-//         boost::property_tree::write_xml(*output, SerializePtree(true));
-//         return true;
-//     }
-//
-//     bool SerializeXmlToString(std::string* output) const
-//     {
-//         std::stringstream str;
-//         SerializeXmlToOStream(&str);
-//         output->assign(str.str());
-//         return true;
-//     }
 };
 
 } // namespace protobuf
