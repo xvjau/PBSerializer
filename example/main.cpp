@@ -70,35 +70,34 @@ int main()
     i->set_number(3);
     i->set_float_number(0.3);
 
+    msg.SerializeJsonToOStream(std::cerr);
+    return 01;
+
     string pb, json, xml, ini, info;
 
     INIT_TIMER;
 
     msg.SerializeToString(&pb);                     SET_TIMER(pb);
     pb = msg.DebugString();                         SET_TIMER(pb_debug);
-    msg.SerializeJsonToString(&json);               SET_TIMER(json);
-    msg.SerializeXmlToString(&xml);                 SET_TIMER(xml);
-    //msg.SerializeIniToString(&ini);               SET_TIMER(ini);
-    msg.SerializeInfoToString(&info);               SET_TIMER(info);
-    
+    msg.SerializeJsonToString(json);               SET_TIMER(json);
+    //msg.SerializeXmlToString(&xml);                 SET_TIMER(xml);
+
     std::cout << "pb=\"" << pb << "\"\n\n";
     std::cout << "json=\"" << json << "\"\n\n";
     std::cout << "xml=\"" << xml << "\"\n\n";
     //std::cout << "ini=\"" << ini << "\"\n\n";
     std::cout << "info=\"" << info << "\"\n" << std::endl;
-    
+
     GET_TIME("PB = ", pb);
     GET_TIME("PB-Debug = ", pb_debug);
     GET_TIME("JSON = ", json);
-    GET_TIME("XML = ", xml);
-    //GET_TIME("INI = ", ini);
-    GET_TIME("INFO = ", info);
-    
+    //GET_TIME("XML = ", xml);
+
     test_message_json msg2;
     msg2.ParseJsonFromString(json);
-    
+
     string json2;
-    msg2.SerializeJsonToString(&json2);
+    msg2.SerializeJsonToString(json2);
     std::cout << "\n\nJson:\n" << json2 << std::endl;
     return 0;
 }

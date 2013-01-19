@@ -33,7 +33,8 @@
 namespace google {
 namespace protobuf {
 
-void ParseJSON(Message* message, std::istream* jsonData);
+void ParseJSON(google::protobuf::Message* message, std::istream& jsonData);
+void SerializeJSON(const google::protobuf::Message& message, std::ostream& jsonData);
 
 template<class T>
 class PBSerializer : public T
@@ -56,27 +57,33 @@ protected:
 
 public:
 
+    bool ParseJSONFromIStream(std::istream &input)
+    {
+        ParseJSON(this, input);
+        return true;
+    }
+
     bool ParseJsonFromString(std::string input)
     {
         std::stringstream str;
         str << input;
-        ParseJSON(this, &str);
+        ParseJSONFromIStream(str);
         return true;
     }
 
-//     bool SerializeJsonToOStream(std::ostream* output) const
-//     {
-//         boost::property_tree::write_json(*output, SerializePtree(false));
-//         return true;
-//     }
-//
-//     bool SerializeJsonToString(std::string* output) const
-//     {
-//         std::stringstream str;
-//         SerializeJsonToOStream(&str);
-//         output->assign(str.str());
-//         return true;
-//     }
+    bool SerializeJsonToOStream(std::ostream &output) const
+    {
+        SerializeJSON(*this, output);
+        return true;
+    }
+
+    bool SerializeJsonToString(std::string &output) const
+    {
+        std::stringstream str;
+        SerializeJsonToOStream(str);
+        output.assign(str.str());
+        return true;
+    }
 //
 //     bool SerializeXmlToOStream(std::ostream* output) const
 //     {

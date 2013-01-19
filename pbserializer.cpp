@@ -39,9 +39,9 @@ public:
     const Descriptor*   m_desc;
     const FieldDescriptor*      m_currentField;
 
-    std::istream*       m_jsonData;
+    std::istream&       m_jsonData;
 
-    JSONParserCtx(Message* message, std::istream* jsonData):
+    JSONParserCtx(Message* message, std::istream& jsonData):
         m_message(message),
         m_jsonData(jsonData)
     {
@@ -67,15 +67,15 @@ public:
     {
         char tailChar = 0;
 
-        while(!m_jsonData->eof())
+        while(!m_jsonData.eof())
         {
             const std::size_t bufferSize = 2048;
             char buffer[bufferSize];
 
             char *bufferStart = tailChar ? &buffer[1] : &buffer[0];
 
-            m_jsonData->read(bufferStart, tailChar ? bufferSize - 1 : bufferSize);
-            std::size_t read = m_jsonData->gcount();
+            m_jsonData.read(bufferStart, tailChar ? bufferSize - 1 : bufferSize);
+            std::size_t read = m_jsonData.gcount();
 
             for(uint i = 0; i < read; /* no inc */)
             {
@@ -577,7 +577,7 @@ public:
     }
 };
 
-void ParseJSON(Message* message, std::istream* jsonData)
+void ParseJSON(google::protobuf::Message* message, std::istream& jsonData)
 {
     JSONParserCtx parser(message, jsonData);
     parser.parse();
@@ -597,6 +597,199 @@ void ParseJSON(Message* message, std::istream* jsonData)
 //     }
 
 }
+
+class JSONWriterCtx
+{
+private:
+    std::ostream&   m_jsonData;
+
+    inline void checkFirst(bool &isFirst)
+    {
+        if (isFirst)
+            isFirst = false;
+        else
+            m_jsonData << ',';
+    }
+
+    inline void checkPath(const std::string& path)
+    {
+        if (!path.empty())
+            m_jsonData << '"' << path << "\":";
+    }
+
+    void put(bool &isFirst, const std::string& path, const std::string value)
+    {
+        checkFirst(isFirst);
+        checkPath(path);
+        m_jsonData << '"' << value << '"';
+    }
+
+    void put(bool &isFirst, const std::string& path, const bool value)
+    {
+        checkFirst(isFirst);
+        checkPath(path);
+        m_jsonData << (value ? "true" : "false");
+    }
+
+    template<typename T>
+    void put(bool &isFirst, const std::string& path, T value)
+    {
+        checkFirst(isFirst);
+        checkPath(path);
+        m_jsonData << value;
+    }
+
+public:
+    JSONWriterCtx(std::ostream& jsonData):
+        m_jsonData(jsonData)
+    {
+    }
+
+    void write(const Message&  message)
+    {
+        bool isFirst = true;
+
+        const Reflection*   refl = message.GetReflection();
+        FieldVector         fields;
+
+        refl->ListFields(message, &fields);
+
+        m_jsonData << '{';
+
+        FieldVector::iterator it = fields.begin(), end = fields.end();
+        for(; it != end; it++)
+        {
+            const FieldDescriptor* desc = *it;
+
+            if (!desc->is_repeated())
+            {
+                switch(desc->cpp_type())
+                {
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                        put(isFirst, desc->name(), refl->GetInt32(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                        put(isFirst, desc->name(), refl->GetInt64(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                        put(isFirst, desc->name(), refl->GetUInt32(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                        put(isFirst, desc->name(), refl->GetUInt64(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                        put(isFirst, desc->name(), refl->GetDouble(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                        put(isFirst, desc->name(), refl->GetFloat(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                        put(isFirst, desc->name(), refl->GetBool(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                        put(isFirst, desc->name(), refl->GetEnum(message, desc)->number());
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                        put(isFirst, desc->name(), refl->GetString(message, desc));
+                        break;
+
+                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                    {
+                        checkFirst(isFirst);
+                        checkPath(desc->name());
+                        write(refl->GetMessage(message, desc));
+                        break;
+                    }
+                }
+            }
+            else // is_repeated
+            {
+                const int count = refl->FieldSize(message, desc);
+
+                if (count)
+                {
+                    if (!isFirst)
+                    {
+                        m_jsonData << ',';
+                        isFirst = true;
+                    }
+
+                    checkPath(desc->name());
+
+                    m_jsonData << '[';
+
+                    for(int i = 0; i != count; i++)
+                    {
+                        switch(desc->cpp_type())
+                        {
+                            case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                                put(isFirst, "", refl->GetRepeatedInt32(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                                put(isFirst, "", refl->GetRepeatedInt64(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                                put(isFirst, "", refl->GetRepeatedUInt32(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                                put(isFirst, "", refl->GetRepeatedUInt64(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                                put(isFirst, "", refl->GetRepeatedDouble(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                                put(isFirst, "", refl->GetRepeatedFloat(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                                put(isFirst, "", refl->GetRepeatedBool(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                                put(isFirst, "", refl->GetRepeatedEnum(message, desc, i)->number());
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                                put(isFirst, "", refl->GetRepeatedString(message, desc, i));
+                                break;
+
+                            case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                            {
+                                checkFirst(isFirst);
+                                write(refl->GetRepeatedMessage(message, desc, i));
+                                break;
+                            }
+                        }
+                    }
+
+                    m_jsonData << ']';
+                }
+            }
+
+        }
+        m_jsonData << '}';
+    }
+};
+
+void SerializeJSON(const Message& message, std::ostream& jsonData)
+{
+    JSONWriterCtx writer(jsonData);
+    writer.write(message);
+}
+
 /*
 void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)
 {
