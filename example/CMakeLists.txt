@@ -4,5 +4,5 @@ include_directories(.. ${CMAKE_CURRENT_BINARY_DIR})
 
 add_executable(example main.cpp ${PROTOBUF_SRCS})
 
-target_link_libraries(example pbserializer pthread ${Boost_LIBRARIES} ${PROTOBUF_LIBRARY})
+target_link_libraries(example pbserializer pthread ${PROTOBUF_LIBRARY})
 
