@@ -8,17 +8,12 @@
 #include <iostream>
 #include <cstdio>
 
-#include "JSON_parser/JSON_parser.h"
-
 namespace google {
 namespace protobuf {
 
 typedef std::vector<const FieldDescriptor*> FieldVector;
 
-#if (__cplusplus >= 201103L)
-constexpr
-#endif
-    static short UTF8len(char b)
+static short UTF8len(char b)
 {
     short bits = 1;
     for (; (b & (1 << 8)) != 0; b <<= 1)
@@ -28,660 +23,411 @@ constexpr
     return bits;
 }
 
-class JSONParserCtx
+class JSONParser
 {
-public:
-    JSON_parser         m_parser;
-
-    struct Context
+private:
+    class JSONContext
     {
-        Context(Message* _message):
+    public:
+        JSONContext(std::string _name):
+            name(_name),
+            inValue(false),
+            inArray(false)
+        {
+        }
+
+        std::string name;
+        bool inValue;
+        bool inArray;
+    };
+    std::stack<JSONContext> m_jsonContext;
+
+    std::string getTempString()
+    {
+        std::size_t start = temp.find("\"");
+        std::size_t end = temp.rfind("\"");
+
+        std::string result;
+
+        if (start != std::string::npos && end != std::string::npos)
+        {
+            result = temp.substr(start + 1, end - start - 1);
+        }
+        else
+        {
+            result = temp;
+            if (result.compare("null") == 0)
+            {
+                result.clear();
+            }
+        }
+
+        temp.clear();
+        return result;
+    }
+
+    void checkValue()
+    {
+        if (m_jsonContext.top().inValue)
+        {
+            value(m_jsonContext.top().name, getTempString());
+            m_jsonContext.top().inValue = false;
+        }
+        else if (m_jsonContext.top().inArray)
+        {
+            value(m_jsonContext.top().name, getTempString());
+        }
+    }
+
+    std::istream    &data;
+    std::size_t     dataRead;
+
+    bool            aborted;
+    bool            inQuotes;
+
+    std::string     temp;
+
+public:
+    JSONParser(std::istream &_data):
+        data(_data),
+        dataRead(0),
+        aborted(false),
+        inQuotes(false)
+    {
+    }
+
+    bool parse()
+    {
+        m_jsonContext.push(JSONContext("<root>"));
+
+        try
+        {
+            std::string c;
+            char highChar = 0;
+
+            const std::size_t bufferSize = 2048;
+            char buffer[bufferSize];
+
+            std::size_t read;
+
+            while((!aborted) && (!data.eof()))
+            {
+                data.read(buffer, bufferSize);
+                read = data.gcount();
+
+                dataRead += read;
+
+                for(std::size_t i = 0; i != read && !aborted; i++)
+                {
+                    char b = buffer[i];
+
+                    if(highChar == 0)
+                    {
+                        if(UTF8len(b) == 1)
+                        {
+                            highChar = 0;
+                            c = (char) b;
+                        }
+                        else
+                        {
+                            highChar = b;
+                            continue;
+                        }
+                    }
+                    else
+                    {
+                        char utf8[2] = { highChar, b };
+                        c = utf8;
+                        highChar = 0;
+                    }
+
+                    if(c[0] == '"')
+                    {
+                        int pos = temp.length() - 1;
+
+                        if(pos == -1 || temp[pos] != '\\')
+                        {
+                            inQuotes = !inQuotes;
+                        }
+                    }
+
+                    if(inQuotes)
+                    {
+                        temp.append(c);
+                    }
+                    else
+                    {
+                        switch(c[0])
+                        {
+                            case '{':
+                                m_jsonContext.top().inValue = false;
+                                onStartElement(m_jsonContext.top().name);
+
+                                m_jsonContext.push(JSONContext(m_jsonContext.top().name));
+                                temp.clear();
+
+                                break;
+
+                            case '}':
+                                checkValue();
+
+                                if(m_jsonContext.top().inArray)
+                                {
+                                    onEndElement(m_jsonContext.top().name);
+                                }
+                                else
+                                {
+                                    onEndElement(m_jsonContext.top().name);
+                                }
+
+                                m_jsonContext.pop();
+                                break;
+
+                            case '[':
+                                m_jsonContext.top().inValue = false;
+                                m_jsonContext.top().inArray = true;
+                                temp.clear();
+                                onStartArray(m_jsonContext.top().name);
+                                break;
+
+                            case ']':
+                                checkValue();
+                                m_jsonContext.top().inArray = false;
+                                onEndArray(m_jsonContext.top().name);
+                                break;
+
+                            case ':':
+                                m_jsonContext.top().name = getTempString();
+                                m_jsonContext.top().inValue = true;
+                                break;
+
+                            case ',':
+                                checkValue();
+                                break;
+
+                            default:
+                                temp.append(c);
+                        }
+                    }
+                }
+            }
+
+            return true;
+        }
+        catch(const std::exception& e)
+        {
+            // TODO Auto-generated catch block
+            std::cerr << "JSON Parse error: " << e.what() << std::endl;
+        }
+
+        return false;
+    }
+
+protected:
+    virtual void onStartElement(std::string name) = 0;
+    virtual void onEndElement(std::string name) = 0;
+    virtual void onStartArray(std::string name) = 0;
+    virtual void onEndArray(std::string name) = 0;
+    virtual void value(std::string name, std::string value) = 0;
+};
+
+class JSONPBParser: public JSONParser
+{
+private:
+    class PBContext
+    {
+    public:
+        PBContext()
+        {
+            message = NULL;
+            refl = NULL;
+            desc = NULL;
+        }
+
+        PBContext(Message* _message):
             message(_message)
         {
             refl = message->GetReflection();
             desc = message->GetDescriptor();
-            currentField = NULL;
         }
 
         Message*                message;
         const Reflection*       refl;
         const Descriptor*       desc;
-        const FieldDescriptor*  currentField;
     };
-    std::stack<Context> m_context;
+    std::stack<PBContext>   m_pbContext;
 
-    std::istream&       m_jsonData;
-
-    JSONParserCtx(Message* message, std::istream& jsonData):
-        m_jsonData(jsonData)
+public:
+    JSONPBParser(Message* message, std::istream& jsonData):
+        JSONParser(jsonData)
     {
-        m_context.push(message);
-
-        JSON_config config;
-        memset(&config, 0, sizeof(JSON_config));
-
-        config.callback = _parserCallback;
-        config.callback_ctx = this;
-
-        m_parser = new_JSON_parser(&config);
+        m_pbContext.push(message);
     }
 
-    ~JSONParserCtx()
+protected:
+    virtual void onStartElement(std::string name)
     {
-        delete_JSON_parser(m_parser);
-    }
+        Message* message = m_pbContext.top().message;
+        const Reflection* refl = m_pbContext.top().refl;
+        const FieldDescriptor* currentField = message->GetDescriptor()->FindFieldByName(name);
 
-    void parse()
-    {
-        char tailChar = 0;
-
-        while(!m_jsonData.eof())
+        if (currentField)
         {
-            const std::size_t bufferSize = 2048;
-            char buffer[bufferSize];
+            if (!currentField->is_repeated())
+                m_pbContext.push(refl->MutableMessage(message, currentField));
+            else
+                m_pbContext.push(refl->AddMessage(message, currentField));
+        }
+        else
+        {
+            if (name.compare("<root>") != 0)
+                m_pbContext.push(PBContext());
+        }
+    }
 
-            char *bufferStart = tailChar ? &buffer[1] : &buffer[0];
+    virtual void onEndElement(std::string name)
+    {
+        m_pbContext.pop();
+    }
 
-            m_jsonData.read(bufferStart, tailChar ? bufferSize - 1 : bufferSize);
-            std::size_t read = m_jsonData.gcount();
+    virtual void onStartArray(std::string name)
+    {
+    }
 
-            for(uint i = 0; i < read; /* no inc */)
+    virtual void onEndArray(std::string name)
+    {
+    }
+
+    virtual void value(std::string name, std::string value)
+    {
+        if (m_pbContext.top().message)
+        {
+            const Reflection* refl = m_pbContext.top().refl;
+            Message* message = m_pbContext.top().message;
+            const FieldDescriptor* currentField = message->GetDescriptor()->FindFieldByName(name);
+
+            if (!currentField)
             {
-                const char c = buffer[i];
-
-                switch(UTF8len(c))
+                std::cerr << "Unknown field: '" << name << "'\n";
+            }
+            else
+            {
+                switch(currentField->cpp_type())
                 {
-                    case 0: assert(UTF8len(c) != 0);  // Should NEVER happen
-                    case 1:
-                        i++;
-                        JSON_parser_char(m_parser, c);
-                        break;
-                    case 2:
+                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
-                        if (i < read - 1)
-                        {
-                            i += 2;
-                            short *str = reinterpret_cast<short*>(buffer[i]);
-                            JSON_parser_char(m_parser, *str);
+                        int val = atoi(value.c_str());
 
-                        }
+                        if (!currentField->is_repeated())
+                            refl->SetInt32(message, currentField, val);
                         else
-                        {
-                            tailChar = buffer[i];
-                            goto EXIT_FOR;
-                        }
-                        break;
-                    }
-                    case 3:
-                    case 4:
-                    {
-                        i += UTF8len(c);
-                        int *str = reinterpret_cast<int*>(buffer[i]);
-                        JSON_parser_char(m_parser, *str);
-                        break;
-                    }
-                }
-            }
-
-            EXIT_FOR: {}
-        }
-    }
-
-    static int _parserCallback(void* ctx, int type, const struct JSON_value_struct* value)
-    {
-        return static_cast<JSONParserCtx*>(ctx)->parserCallback(type, value);
-    }
-
-    int parserCallback(int type, const struct JSON_value_struct* value)
-    {
-        switch(type)
-        {
-            case JSON_T_ARRAY_BEGIN:
-            {
-                std::cerr << "Array begin" << std::endl;
-                break;
-            }
-
-            case JSON_T_OBJECT_BEGIN:
-            {
-                std::cerr << "Object begin" << std::endl;
-
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                if (currentField)
-                {
-                    const Reflection* refl = m_context.top().refl;
-                    Message* message = m_context.top().message;
-
-                    m_context.push(refl->MutableMessage(message, currentField));
-                }
-                break;
-            }
-
-            case JSON_T_ARRAY_END:
-            {
-                std::cerr << "Array end" << std::endl;
-                break;
-            }
-
-            case JSON_T_OBJECT_END:
-            {
-                std::cerr << "Object end" << std::endl;
-                break;
-            }
-
-            case JSON_T_INTEGER:
-            {
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                assert(currentField);
-
-                switch(currentField->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    {
-                        setInt32(value->vu.integer_value);
+                            refl->AddInt32(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
                     {
-                        setInt64(value->vu.integer_value);
+                        long long val = atoll(value.c_str());
+
+                        if (!currentField->is_repeated())
+                            refl->SetInt64(message, currentField, val);
+                        else
+                            refl->AddInt64(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
                     {
-                        setUInt32(value->vu.integer_value);
+                        int val = atoi(value.c_str());
+
+                        if (!currentField->is_repeated())
+                            refl->SetUInt32(message, currentField, val);
+                        else
+                            refl->AddUInt32(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
                     {
-                        setInt64(value->vu.integer_value);
+                        long long val = atoll(value.c_str());
+
+                        if (!currentField->is_repeated())
+                            refl->SetUInt64(message, currentField, val);
+                        else
+                            refl->AddUInt64(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
                     {
-                        setDouble(value->vu.integer_value);
+                        double val = strtod(value.c_str(), NULL);
+
+                        if (!currentField->is_repeated())
+                            refl->SetDouble(message, currentField, val);
+                        else
+                            refl->AddDouble(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
                     {
-                        setFloat(value->vu.integer_value);
+                        float val = strtof(value.c_str(), NULL);
+
+                        if (!currentField->is_repeated())
+                            refl->SetFloat(message, currentField, val);
+                        else
+                            refl->AddFloat(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
                     {
-                        setBool(value->vu.integer_value);
+                        bool val = (strcasecmp(value.c_str(), "true") == 0) ||
+                                    (strcasecmp(value.c_str(), "t") == 0) ||
+                                    (strcasecmp(value.c_str(), "1") == 0);
+
+                        if (!currentField->is_repeated())
+                            refl->SetBool(message, currentField, val);
+                        else
+                            refl->AddBool(message, currentField, val);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
                     {
-                        setEnum(value->vu.integer_value);
+                        int val = atoll(value.c_str());
+
+                        if (!currentField->is_repeated())
+                            refl->SetEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
+                        else
+                            refl->AddEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
                     {
-                        char buffer[64];
-                        snprintf(buffer, 64, "%ld", value->vu.integer_value);
-                        setString(buffer);
+                        if (!currentField->is_repeated())
+                            refl->SetString(message, currentField, value);
+                        else
+                            refl->AddString(message, currentField, value);
                         break;
                     }
 
                     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
                     {
-                        // TODO wtf?
+                        //TODO WTF?
                         break;
                     }
                 }
-                break;
-            }
-
-            case JSON_T_FLOAT:
-            {
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                assert(currentField);
-
-                switch(currentField->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    {
-                        setInt32(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    {
-                        setInt64(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    {
-                        setUInt32(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    {
-                        setInt64(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    {
-                        setDouble(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    {
-                        setFloat(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    {
-                        setBool(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    {
-                        setEnum(value->vu.float_value);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    {
-                        char buffer[64];
-                        snprintf(buffer, 64, "%f", value->vu.float_value);
-                        setString(buffer);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        // TODO wtf?
-                        break;
-                    }
-                }
-                break;
-            }
-
-            case JSON_T_NULL:
-                break;
-
-            case JSON_T_TRUE:
-            {
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                assert(currentField);
-
-                switch(currentField->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    {
-                        setInt32(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    {
-                        setInt64(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    {
-                        setUInt32(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    {
-                        setInt64(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    {
-                        setDouble(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    {
-                        setFloat(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    {
-                        setBool(true);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    {
-                        setEnum(1);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    {
-                        setString("true");
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        // TODO wtf?
-                        break;
-                    }
-                }
-                break;
-            }
-
-            case JSON_T_FALSE:
-            {
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                assert(currentField);
-
-                switch(currentField->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    {
-                        setInt32(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    {
-                        setInt64(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    {
-                        setUInt32(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    {
-                        setInt64(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    {
-                        setDouble(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    {
-                        setFloat(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    {
-                        setBool(false);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    {
-                        setEnum(0);
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    {
-                        setString("false");
-                        break;
-                    }
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        // TODO wtf?
-                        break;
-                    }
-                }
-                break;
-            }
-
-            case JSON_T_STRING:
-            {
-                std::string str = std::string( value->vu.str.value, value->vu.str.length );
-
-                const FieldDescriptor* currentField = m_context.top().currentField;
-                if (!currentField)
-                {
-                    std::cerr << "field: '" << str << "'" << std::endl;
-                    m_context.top().currentField = m_context.top().desc->FindFieldByName(str);
-                }
-                else
-                {
-                    switch(currentField->cpp_type())
-                    {
-                        case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                        {
-                            int val = atoi(str.c_str());
-                            setInt32(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                        {
-                            long long val = atoll(str.c_str());
-                            setInt64(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                        {
-                            int val = atoi(str.c_str());
-                            setUInt32(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                        {
-                            long long val = atoll(str.c_str());
-                            setInt64(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                        {
-                            double val = strtod(str.c_str(), NULL);
-                            setDouble(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                        {
-                            float val = strtof(str.c_str(), NULL);
-                            setFloat(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                        {
-                            bool val = (strcasecmp(str.c_str(), "true") == 0) ||
-                                        (strcasecmp(str.c_str(), "t") == 0) ||
-                                        (strcasecmp(str.c_str(), "1") == 0);
-                            setBool(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                        {
-                            int val = atoll(str.c_str());
-                            setEnum(val);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                        {
-                            setString(str);
-                            break;
-                        }
-
-                        case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                        {
-                            //TODO WTF?
-                            break;
-                        }
-                    }
-                }
-                break;
-            }
-
-            case JSON_T_KEY:
-            {
-                std::string fieldName = std::string(value->vu.str.value, value->vu.str.length);
-                std::cerr << "field: '" << fieldName << "'" << std::endl;
-
-                m_context.top().currentField = m_context.top().desc->FindFieldByName(fieldName);
-                break;
-            }
-
-            default:
-            {
-                assert( false );
             }
         }
-
-        return 1; // continue parsing
-    }
-
-    void setInt32(int32_t val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetInt32(message, currentField, val);
-        else
-            refl->AddInt32(message, currentField, val);
-    }
-    void setInt64(int64_t val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetInt64(message, currentField, val);
-        else
-            refl->AddInt64(message, currentField, val);
-    }
-    void setUInt32(uint32_t val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetUInt32(message, currentField, val);
-        else
-            refl->AddUInt32(message, currentField, val);
-    }
-    void setUInt64(uint64_t val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetUInt64(message, currentField, val);
-        else
-            refl->AddUInt64(message, currentField, val);
-    }
-    void setDouble(double val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetDouble(message, currentField, val);
-        else
-            refl->AddDouble(message, currentField, val);
-    }
-    void setFloat(float val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetFloat(message, currentField, val);
-        else
-            refl->AddFloat(message, currentField, val);
-    }
-    void setBool(bool val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetBool(message, currentField, val);
-        else
-            refl->AddBool(message, currentField, val);
-    }
-    void setEnum(int val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
-        else
-            refl->AddEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
-    }
-    void setString(std::string val)
-    {
-        const FieldDescriptor* currentField = m_context.top().currentField;
-        const Reflection* refl = m_context.top().refl;
-        Message* message = m_context.top().message;
-
-        if (!currentField->is_repeated())
-            refl->SetString(message, currentField, val);
-        else
-            refl->AddString(message, currentField, val);
     }
 };
 
 void ParseJSON(google::protobuf::Message* message, std::istream& jsonData)
 {
-    JSONParserCtx parser(message, jsonData);
+    JSONPBParser parser(message, jsonData);
     parser.parse();
-
-//     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-//     {
-//         ParsePtree(refl->MutableMessage(m_message, m_desc), &(it->second));
-//         break;
-//     }
-//
-//     case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-//     {
-//         #warning Check this!
-//         Message* m = refl->AddMessage(m_message, m_desc);
-//         ParsePtree(m, &(i3->second));
-//         break;
-//     }
-
 }
 
 class JSONWriterCtx
@@ -875,145 +621,6 @@ void SerializeJSON(const Message& message, std::ostream& jsonData)
     JSONWriterCtx writer(jsonData);
     writer.write(message);
 }
-
-/*
-void SerializePtreeFromMessage(const Message& message, boost::property_tree::ptree* result, std::string path, bool useArrayItemNames)
-{
-    using boost::property_tree::ptree;
-
-    const Reflection* refl = message.GetReflection();
-
-    FieldVector fields;
-
-    refl->ListFields(message, &fields);
-
-    FieldVector::iterator it = fields.begin(), end = fields.end();
-    for(; it != end; it++)
-    {
-        const FieldDescriptor* desc = *it;
-
-        std::string p = path + desc->name();
-
-        if (!desc->is_repeated())
-        {
-            switch(desc->cpp_type())
-            {
-                case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                    result->put(p, refl->GetInt32(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    result->put(p, refl->GetInt64(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    result->put(p, refl->GetUInt32(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    result->put(p, refl->GetUInt64(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    result->put(p, refl->GetDouble(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    result->put(p, refl->GetFloat(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    result->put(p, refl->GetBool(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    result->put(p, refl->GetEnum(message, desc)->number());
-                    break;
-
-                case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    result->put(p, refl->GetString(message, desc));
-                    break;
-
-                case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                {
-                    SerializePtreeFromMessage(refl->GetMessage(message, desc), result, p + '.', useArrayItemNames);
-                    break;
-                }
-            }
-        }
-        else // is_repeated
-        {
-            const int count = refl->FieldSize(message, desc);
-
-            #warning FIXME This does not work yet for all cases (only XML and JSON)
-            const std::string itemName = useArrayItemNames ? desc->name() : std::string();
-
-            ptree array;
-
-            for(int i = 0; i != count; i++)
-            {
-                ptree item;
-
-                switch(desc->cpp_type())
-                {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
-                        item.put("", refl->GetRepeatedInt32(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                        item.put("", refl->GetRepeatedInt64(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                        item.put("", refl->GetRepeatedUInt32(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                        item.put("", refl->GetRepeatedUInt64(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                        item.put("", refl->GetRepeatedDouble(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                        item.put("", refl->GetRepeatedFloat(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                        item.put("", refl->GetRepeatedBool(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                        item.put("", refl->GetRepeatedEnum(message, desc, i)->number());
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                        item.put("", refl->GetRepeatedString(message, desc, i));
-                        break;
-
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        #warning Check this!
-                        SerializePtreeFromMessage(refl->GetRepeatedMessage(message, desc, i), &item, "", useArrayItemNames);
-                        break;
-                    }
-                }
-#if (__cplusplus >= 201103L)
-                array.push_back(std::make_pair(itemName, std::move(item)));
-#else
-                array.push_back(std::make_pair(itemName, item));
-#endif
-            }
-
-#if (__cplusplus >= 201103L)
-            result->add_child(p, std::move(array));
-#else
-            result->add_child(p, array);
-#endif
-        }
-    }
-}*/
 
 }
 }
