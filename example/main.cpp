@@ -70,9 +70,6 @@ int main()
     i->set_number(3);
     i->set_float_number(0.3);
 
-    msg.SerializeJsonToOStream(std::cerr);
-    return 01;
-
     string pb, json, xml, ini, info;
 
     INIT_TIMER;
@@ -92,6 +89,46 @@ int main()
     GET_TIME("PB-Debug = ", pb_debug);
     GET_TIME("JSON = ", json);
     //GET_TIME("XML = ", xml);
+
+    json = "{                                        \
+        \"id\": \"42\",                              \
+        \"message\": \"Hello World!\",               \
+        \"sub_message\":                             \
+        {                                            \
+            \"year\": \"1972\",                      \
+            \"month\": \"2\",                        \
+            \"day\": \"31\"                          \
+        },                                           \
+        \"int_array\":                               \
+        [                                            \
+        \"1\",                                       \
+        \"1\",                                       \
+        \"2\",                                       \
+        \"3\",                                       \
+        \"5\",                                       \
+        \"8\",                                       \
+        \"13\",                                      \
+        \"21\"                                       \
+        ],                                           \
+        \"obj_array\":                               \
+        [                                            \
+        {                                            \
+            \"text\": \"One\",                       \
+            \"number\": \"1\",                       \
+            \"float_number\": \"0.1\"                \
+        },                                           \
+        {                                            \
+            \"text\": \"two\",                       \
+            \"number\": \"2\",                       \
+            \"float_number\": \"0.2\"                \
+        },                                           \
+        {                                            \
+            \"text\": \"Three\",                     \
+            \"number\": \"3\",                       \
+            \"float_number\": \"0.3\"                \
+        }                                            \
+        ]                                            \
+}";
 
     test_message_json msg2;
     msg2.ParseJsonFromString(json);

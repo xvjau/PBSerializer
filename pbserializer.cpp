@@ -33,21 +33,29 @@ class JSONParserCtx
 public:
     JSON_parser         m_parser;
 
-    Message*            m_message;
+    struct Context
+    {
+        Context(Message* _message):
+            message(_message)
+        {
+            refl = message->GetReflection();
+            desc = message->GetDescriptor();
+            currentField = NULL;
+        }
 
-    const Reflection*   m_refl;
-    const Descriptor*   m_desc;
-    const FieldDescriptor*      m_currentField;
+        Message*                message;
+        const Reflection*       refl;
+        const Descriptor*       desc;
+        const FieldDescriptor*  currentField;
+    };
+    std::stack<Context> m_context;
 
     std::istream&       m_jsonData;
 
     JSONParserCtx(Message* message, std::istream& jsonData):
-        m_message(message),
         m_jsonData(jsonData)
     {
-        m_refl = message->GetReflection();
-        m_desc = message->GetDescriptor();
-        m_currentField = NULL;
+        m_context.push(message);
 
         JSON_config config;
         memset(&config, 0, sizeof(JSON_config));
@@ -126,25 +134,47 @@ public:
 
     int parserCallback(int type, const struct JSON_value_struct* value)
     {
-        switch( type )
+        switch(type)
         {
             case JSON_T_ARRAY_BEGIN:
+            {
+                std::cerr << "Array begin" << std::endl;
+                break;
+            }
+
             case JSON_T_OBJECT_BEGIN:
             {
-                //thiz->elementStart( nullptr );
+                std::cerr << "Object begin" << std::endl;
+
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                if (currentField)
+                {
+                    const Reflection* refl = m_context.top().refl;
+                    Message* message = m_context.top().message;
+
+                    m_context.push(refl->MutableMessage(message, currentField));
+                }
                 break;
             }
 
             case JSON_T_ARRAY_END:
+            {
+                std::cerr << "Array end" << std::endl;
+                break;
+            }
+
             case JSON_T_OBJECT_END:
             {
-                //thiz->elementEnd();
+                std::cerr << "Object end" << std::endl;
                 break;
             }
 
             case JSON_T_INTEGER:
             {
-                switch(m_currentField->cpp_type())
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                assert(currentField);
+
+                switch(currentField->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
@@ -213,7 +243,10 @@ public:
 
             case JSON_T_FLOAT:
             {
-                switch(m_currentField->cpp_type())
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                assert(currentField);
+
+                switch(currentField->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
@@ -285,7 +318,10 @@ public:
 
             case JSON_T_TRUE:
             {
-                switch(m_currentField->cpp_type())
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                assert(currentField);
+
+                switch(currentField->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
@@ -352,7 +388,10 @@ public:
 
             case JSON_T_FALSE:
             {
-                switch(m_currentField->cpp_type())
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                assert(currentField);
+
+                switch(currentField->cpp_type())
                 {
                     case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
                     {
@@ -421,76 +460,85 @@ public:
             {
                 std::string str = std::string( value->vu.str.value, value->vu.str.length );
 
-                switch(m_currentField->cpp_type())
+                const FieldDescriptor* currentField = m_context.top().currentField;
+                if (!currentField)
                 {
-                    case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                    std::cerr << "field: '" << str << "'" << std::endl;
+                    m_context.top().currentField = m_context.top().desc->FindFieldByName(str);
+                }
+                else
+                {
+                    switch(currentField->cpp_type())
                     {
-                        int val = atoi(str.c_str());
-                        setInt32(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_INT32:   // TYPE_INT32, TYPE_SINT32, TYPE_SFIXED32
+                        {
+                            int val = atoi(str.c_str());
+                            setInt32(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
-                    {
-                        long long val = atoll(str.c_str());
-                        setInt64(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_INT64:   // TYPE_INT64, TYPE_SINT64, TYPE_SFIXED64
+                        {
+                            long long val = atoll(str.c_str());
+                            setInt64(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
-                    {
-                        int val = atoi(str.c_str());
-                        setUInt32(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_UINT32:  // TYPE_UINT32, TYPE_FIXED32
+                        {
+                            int val = atoi(str.c_str());
+                            setUInt32(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
-                    {
-                        long long val = atoll(str.c_str());
-                        setInt64(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_UINT64:  // TYPE_UINT64, TYPE_FIXED64
+                        {
+                            long long val = atoll(str.c_str());
+                            setInt64(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
-                    {
-                        double val = strtod(str.c_str(), NULL);
-                        setDouble(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_DOUBLE:  // TYPE_DOUBLE
+                        {
+                            double val = strtod(str.c_str(), NULL);
+                            setDouble(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
-                    {
-                        float val = strtof(str.c_str(), NULL);
-                        setFloat(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_FLOAT:   // TYPE_FLOAT
+                        {
+                            float val = strtof(str.c_str(), NULL);
+                            setFloat(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
-                    {
-                        bool val = (strcasecmp(str.c_str(), "true") == 0) ||
-                                    (strcasecmp(str.c_str(), "t") == 0) ||
-                                    (strcasecmp(str.c_str(), "1") == 0);
-                        setBool(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_BOOL:    // TYPE_BOOL
+                        {
+                            bool val = (strcasecmp(str.c_str(), "true") == 0) ||
+                                        (strcasecmp(str.c_str(), "t") == 0) ||
+                                        (strcasecmp(str.c_str(), "1") == 0);
+                            setBool(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
-                    {
-                        int val = atoll(str.c_str());
-                        setEnum(val);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_ENUM:    // TYPE_ENUM
+                        {
+                            int val = atoll(str.c_str());
+                            setEnum(val);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
-                    {
-                        setString(str);
-                        break;
-                    }
+                        case FieldDescriptor::CPPTYPE_STRING:  // TYPE_STRING, TYPE_BYTES
+                        {
+                            setString(str);
+                            break;
+                        }
 
-                    case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
-                    {
-                        // TODO wtf?
-                        break;
+                        case FieldDescriptor::CPPTYPE_MESSAGE: // TYPE_MESSAGE, TYPE_GROUP
+                        {
+                            //TODO WTF?
+                            break;
+                        }
                     }
                 }
                 break;
@@ -499,7 +547,9 @@ public:
             case JSON_T_KEY:
             {
                 std::string fieldName = std::string(value->vu.str.value, value->vu.str.length);
-                m_currentField = m_desc->FindFieldByName(fieldName);
+                std::cerr << "field: '" << fieldName << "'" << std::endl;
+
+                m_context.top().currentField = m_context.top().desc->FindFieldByName(fieldName);
                 break;
             }
 
@@ -514,66 +564,102 @@ public:
 
     void setInt32(int32_t val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetInt32(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetInt32(message, currentField, val);
         else
-            m_refl->AddInt32(m_message, m_currentField, val);
+            refl->AddInt32(message, currentField, val);
     }
     void setInt64(int64_t val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetInt64(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetInt64(message, currentField, val);
         else
-            m_refl->AddInt64(m_message, m_currentField, val);
+            refl->AddInt64(message, currentField, val);
     }
     void setUInt32(uint32_t val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetUInt32(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetUInt32(message, currentField, val);
         else
-            m_refl->AddUInt32(m_message, m_currentField, val);
+            refl->AddUInt32(message, currentField, val);
     }
     void setUInt64(uint64_t val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetUInt64(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetUInt64(message, currentField, val);
         else
-            m_refl->AddUInt64(m_message, m_currentField, val);
+            refl->AddUInt64(message, currentField, val);
     }
     void setDouble(double val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetDouble(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetDouble(message, currentField, val);
         else
-            m_refl->AddDouble(m_message, m_currentField, val);
+            refl->AddDouble(message, currentField, val);
     }
     void setFloat(float val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetFloat(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetFloat(message, currentField, val);
         else
-            m_refl->AddFloat(m_message, m_currentField, val);
+            refl->AddFloat(message, currentField, val);
     }
     void setBool(bool val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetBool(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetBool(message, currentField, val);
         else
-            m_refl->AddBool(m_message, m_currentField, val);
+            refl->AddBool(message, currentField, val);
     }
     void setEnum(int val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetEnum(m_message, m_currentField, m_currentField->enum_type()->FindValueByNumber(val));
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
         else
-            m_refl->AddEnum(m_message, m_currentField, m_currentField->enum_type()->FindValueByNumber(val));
+            refl->AddEnum(message, currentField, currentField->enum_type()->FindValueByNumber(val));
     }
     void setString(std::string val)
     {
-        if (!m_currentField->is_repeated())
-            m_refl->SetString(m_message, m_currentField, val);
+        const FieldDescriptor* currentField = m_context.top().currentField;
+        const Reflection* refl = m_context.top().refl;
+        Message* message = m_context.top().message;
+
+        if (!currentField->is_repeated())
+            refl->SetString(message, currentField, val);
         else
-            m_refl->AddString(m_message, m_currentField, val);
+            refl->AddString(message, currentField, val);
     }
 };
 
