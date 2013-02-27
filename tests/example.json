@@ -1,39 +1,39 @@
 {
-    "id": "42",
+    "id": 42,
     "message": "Hello World!",
     "sub_message":
     {
-        "year": "1972",
-        "month": "2",
-        "day": "31"
+        "year": 1972,
+        "month": 2,
+        "day": 31
     },
     "int_array":
     [
-        "1",
-        "1",
-        "2",
-        "3",
-        "5",
-        "8",
-        "13",
-        "21"
+        1,
+        1,
+        2,
+        3,
+        5,
+        8,
+        13,
+        21
     ],
     "obj_array":
     [
         {
             "text": "One",
-            "number": "1",
-            "float_number": "0.1"
+            "number": 1,
+            "float_number": 0.1
         },
         {
             "text": "two",
-            "number": "2",
-            "float_number": "0.2"
+            "number": 2,
+            "float_number": 0.2
         },
         {
             "text": "Three",
-            "number": "3",
-            "float_number": "0.3"
+            "number": 3,
+            "float_number": 0.3
         }
     ]
 }

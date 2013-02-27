@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 #include <gtest/gtest.h>
 #include "message.pb.h"
 #include <pbserializer.h>
@@ -68,7 +69,22 @@ TEST(PBSerializerTests, TestJsonSerialization)
         }
         file.close();
     }
-    ASSERT_STREQ(r.str().c_str(), json.c_str());
+    
+    // removing linebreaks and spaces
+    string response = r.str();
+    string::iterator end_pos = remove(response.begin(), response.end(), '\n');
+    response.erase(end_pos, response.end());
+    
+    end_pos = remove(response.begin(), response.end(), ' ');
+    response.erase(end_pos, response.end());
+    
+    end_pos = remove(json.begin(), json.end(), '\n');
+    json.erase(end_pos, json.end());
+    
+    end_pos = remove(json.begin(), json.end(), ' ');
+    json.erase(end_pos, json.end());
+    
+    ASSERT_STREQ(response.c_str(), json.c_str());
 }
 
 TEST(PBSerializerTests, TestJsonParsing)
