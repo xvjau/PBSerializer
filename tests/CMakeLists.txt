@@ -2,7 +2,7 @@
 find_library(LIBPTHREAD NAMES pthread)
 find_library(LIBGTEST NAMES gtest)
 find_library(LIBGTEST_MAIN NAMES gtest_main)
-find_library(LIBPBSERIALIZER NAMES pbserializer)
+find_library(LIBPBSERIALIZER NAMES pbserializer HINTS ${CMAKE_CURRENT_BINARY_DIR})
 
 PROTOBUF_GENERATE_CPP(PROTOBUF_SRCS PROTOBUF_HDRS message.proto)
 

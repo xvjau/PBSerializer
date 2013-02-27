@@ -84,6 +84,7 @@ private:
 
     bool            aborted;
     bool            inQuotes;
+    bool            inSlash;
 
     std::string     temp;
 
@@ -92,7 +93,8 @@ public:
         data(_data),
         dataRead(0),
         aborted(false),
-        inQuotes(false)
+        inQuotes(false),
+        inSlash(false)
     {
     }
 
@@ -141,7 +143,7 @@ public:
                         highChar = 0;
                     }
 
-                    if(c[0] == '"')
+                    if(c[0] == '"' && !inSlash)
                     {
                         int pos = temp.length() - 1;
 
@@ -151,7 +153,7 @@ public:
                         }
                     }
 
-                    if(inQuotes)
+                    if(inQuotes || inSlash)
                     {
                         temp.append(c);
                     }
@@ -205,10 +207,16 @@ public:
                                 checkValue();
                                 break;
 
+                            case '\\':
+                                inSlash = true;
+                                continue;
+                                
                             default:
                                 temp.append(c);
                         }
                     }
+                    
+                    inSlash = false;
                 }
             }
 
