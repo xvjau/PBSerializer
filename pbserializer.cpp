@@ -84,7 +84,6 @@ private:
 
     bool            aborted;
     bool            inQuotes;
-    bool            inSlash;
 
     std::string     temp;
 
@@ -93,8 +92,7 @@ public:
         data(_data),
         dataRead(0),
         aborted(false),
-        inQuotes(false),
-        inSlash(false)
+        inQuotes(false)
     {
     }
 
@@ -143,7 +141,7 @@ public:
                         highChar = 0;
                     }
 
-                    if(c[0] == '"' && !inSlash)
+                    if(c[0] == '"')
                     {
                         int pos = temp.length() - 1;
 
@@ -153,7 +151,7 @@ public:
                         }
                     }
 
-                    if(inQuotes || inSlash)
+                    if(inQuotes)
                     {
                         temp.append(c);
                     }
@@ -206,17 +204,11 @@ public:
                             case ',':
                                 checkValue();
                                 break;
-
-                            case '\\':
-                                inSlash = true;
-                                continue;
                                 
                             default:
                                 temp.append(c);
                         }
                     }
-                    
-                    inSlash = false;
                 }
             }
 
@@ -461,7 +453,19 @@ private:
     {
         checkFirst(isFirst);
         checkPath(path);
-        m_jsonData << '"' << value << '"';
+        
+        const std::string::size_type i = 0, length = value.length();
+        
+        m_jsonData.write('"');
+        
+        for(; i != length; i++)
+        {
+            if (value[i] == '"')
+                m_jsonData.write('\\');
+            m_jsonData.write(value[i]);
+        }
+        
+        m_jsonData.write('"');
     }
 
     void put(bool &isFirst, const std::string& path, const bool value)
