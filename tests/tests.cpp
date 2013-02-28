@@ -45,7 +45,7 @@ TEST(PBSerializerTests, TestJsonSerialization)
     i->set_float_number(0.1);
 
     i = obj_arry->Add();
-    i->set_text("two");
+    i->set_text("\"two\"");
     i->set_number(2);
     i->set_float_number(0.2);
 
@@ -131,7 +131,7 @@ TEST(PBSerializerTests, TestJsonParsing)
     ASSERT_EQ(msg.obj_array(0).number(), 1);
     ASSERT_NEAR(msg.obj_array(0).float_number(), 0.1, 0.01);
 
-    ASSERT_STREQ(msg.obj_array(1).text().c_str(), "two");
+    ASSERT_STREQ(msg.obj_array(1).text().c_str(), "\"two\"");
     ASSERT_EQ(msg.obj_array(1).number(), 2);
     ASSERT_NEAR(msg.obj_array(1).float_number(), 0.2, 0.01);
 

@@ -84,6 +84,7 @@ private:
 
     bool            aborted;
     bool            inQuotes;
+    bool            inSlash;
 
     std::string     temp;
 
@@ -92,7 +93,8 @@ public:
         data(_data),
         dataRead(0),
         aborted(false),
-        inQuotes(false)
+        inQuotes(false),
+        inSlash(false)
     {
     }
 
@@ -140,73 +142,81 @@ public:
                         c = utf8;
                         highChar = 0;
                     }
-
-                    if(c[0] == '"')
-                    {
-                        int pos = temp.length() - 1;
-
-                        if(pos == -1 || temp[pos] != '\\')
-                        {
-                            inQuotes = !inQuotes;
-                        }
-                    }
-
-                    if(inQuotes)
+                    
+                    if (inSlash)
                     {
                         temp.append(c);
+                        inSlash = false;
                     }
                     else
                     {
-                        switch(c[0])
+                        if(c[0] == '"')
                         {
-                            case '{':
-                                m_jsonContext.top().inValue = false;
-                                onStartElement(m_jsonContext.top().name);
+                            inQuotes = !inQuotes;
+                        }
+                        else if(c[0] == '\\')
+                        {
+                            inSlash = true;
+                            continue;
+                        }
 
-                                m_jsonContext.push(JSONContext(m_jsonContext.top().name));
-                                temp.clear();
+                        if(inQuotes)
+                        {
+                            temp.append(c);
+                        }
+                        else
+                        {
+                            switch(c[0])
+                            {
+                                case '{':
+                                    m_jsonContext.top().inValue = false;
+                                    onStartElement(m_jsonContext.top().name);
 
-                                break;
+                                    m_jsonContext.push(JSONContext(m_jsonContext.top().name));
+                                    temp.clear();
 
-                            case '}':
-                                checkValue();
+                                    break;
 
-                                if(m_jsonContext.top().inArray)
-                                {
-                                    onEndElement(m_jsonContext.top().name);
-                                }
-                                else
-                                {
-                                    onEndElement(m_jsonContext.top().name);
-                                }
+                                case '}':
+                                    checkValue();
 
-                                m_jsonContext.pop();
-                                break;
+                                    if(m_jsonContext.top().inArray)
+                                    {
+                                        onEndElement(m_jsonContext.top().name);
+                                    }
+                                    else
+                                    {
+                                        onEndElement(m_jsonContext.top().name);
+                                    }
 
-                            case '[':
-                                m_jsonContext.top().inValue = false;
-                                m_jsonContext.top().inArray = true;
-                                temp.clear();
-                                onStartArray(m_jsonContext.top().name);
-                                break;
+                                    m_jsonContext.pop();
+                                    break;
 
-                            case ']':
-                                checkValue();
-                                m_jsonContext.top().inArray = false;
-                                onEndArray(m_jsonContext.top().name);
-                                break;
+                                case '[':
+                                    m_jsonContext.top().inValue = false;
+                                    m_jsonContext.top().inArray = true;
+                                    temp.clear();
+                                    onStartArray(m_jsonContext.top().name);
+                                    break;
 
-                            case ':':
-                                m_jsonContext.top().name = getTempString();
-                                m_jsonContext.top().inValue = true;
-                                break;
+                                case ']':
+                                    checkValue();
+                                    m_jsonContext.top().inArray = false;
+                                    onEndArray(m_jsonContext.top().name);
+                                    break;
 
-                            case ',':
-                                checkValue();
-                                break;
-                                
-                            default:
-                                temp.append(c);
+                                case ':':
+                                    m_jsonContext.top().name = getTempString();
+                                    m_jsonContext.top().inValue = true;
+                                    break;
+
+                                case ',':
+                                    checkValue();
+                                    break;
+                                    
+                                default:
+                                    temp.append(c);
+                            }
                         }
                     }
                 }
@@ -449,7 +459,7 @@ private:
             m_jsonData << '"' << path << "\":";
     }
 
-    void put(bool &isFirst, const std::string& path, const std::string value)
+    void put(bool &isFirst, const std::string& path, const std::string& value)
     {
         checkFirst(isFirst);
         checkPath(path);

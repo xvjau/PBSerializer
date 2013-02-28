@@ -26,7 +26,7 @@
             "float_number": 0.1
         },
         {
-            "text": "two",
+            "text": "\"two\"",
             "number": 2,
             "float_number": 0.2
         },
