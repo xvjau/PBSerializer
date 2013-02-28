@@ -285,16 +285,16 @@ protected:
         }
     }
 
-    virtual void onEndElement(std::string name)
+    virtual void onEndElement(std::string /* name */)
     {
         m_pbContext.pop();
     }
 
-    virtual void onStartArray(std::string name)
+    virtual void onStartArray(std::string /* name */)
     {
     }
 
-    virtual void onEndArray(std::string name)
+    virtual void onEndArray(std::string /* name */)
     {
     }
 
@@ -454,18 +454,18 @@ private:
         checkFirst(isFirst);
         checkPath(path);
         
-        const std::string::size_type i = 0, length = value.length();
+        std::string::size_type i = 0, length = value.length();
         
-        m_jsonData.write('"');
+        m_jsonData.put('"');
         
         for(; i != length; i++)
         {
             if (value[i] == '"')
-                m_jsonData.write('\\');
-            m_jsonData.write(value[i]);
+                m_jsonData.put('\\');
+            m_jsonData.put(value[i]);
         }
         
-        m_jsonData.write('"');
+        m_jsonData.put('"');
     }
 
     void put(bool &isFirst, const std::string& path, const bool value)
