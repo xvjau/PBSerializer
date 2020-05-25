@@ -16,7 +16,7 @@
     You should have received a copy of the GNU Lesser General Public
     License along with this library; if not, write to the Free Software
     Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
-*/
+ */
 
 #ifndef PBSERIALIZER_H
 #define PBSERIALIZER_H
@@ -30,47 +30,49 @@
 #include <google/protobuf/message.h>
 #include <google/protobuf/descriptor.h>
 
-namespace google {
-namespace protobuf {
-
-void ParseJSON(google::protobuf::Message* message, std::istream& jsonData);
-void SerializeJSON(const google::protobuf::Message& message, std::ostream& jsonData);
-
-template<class T>
-class PBSerializer : public T
+namespace google
 {
-public:
+  namespace protobuf
+  {
 
-    bool ParseJSONFromIStream(std::istream &input)
+    void ParseJSON(google::protobuf::Message* message, std::istream& jsonData);
+    void SerializeJSON(const google::protobuf::Message& message, std::ostream& jsonData, const bool convert_bytes_to_hex = true);
+
+    template<class T>
+    class PBSerializer : public T
     {
+    public:
+
+      bool ParseJSONFromIStream(std::istream &input)
+      {
         ParseJSON(this, input);
         return true;
-    }
+      }
 
-    bool ParseJsonFromString(std::string input)
-    {
+      bool ParseJsonFromString(std::string input)
+      {
         std::stringstream str;
         str << input;
         ParseJSONFromIStream(str);
         return true;
-    }
+      }
 
-    bool SerializeJsonToOStream(std::ostream &output) const
-    {
+      bool SerializeJsonToOStream(std::ostream &output) const
+      {
         SerializeJSON(*this, output);
         return true;
-    }
+      }
 
-    bool SerializeJsonToString(std::string &output) const
-    {
+      bool SerializeJsonToString(std::string &output) const
+      {
         std::stringstream str;
         SerializeJsonToOStream(str);
         output.assign(str.str());
         return true;
-    }
-};
+      }
+    };
 
-} // namespace protobuf
+  } // namespace protobuf
 } // namespace google
 
 #endif // PBSERIALIZER_H
